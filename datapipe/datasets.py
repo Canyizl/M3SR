@@ -69,7 +69,7 @@ def get_transforms(transform_type, kwargs):
     if transform_type == 'default':
         transform = thv.transforms.Compose([
             thv.transforms.ToTensor(),
-            #thv.transforms.Normalize(mean=kwargs.get('mean', 0.5), std=kwargs.get('std', 0.5)),
+            thv.transforms.Normalize(mean=kwargs.get('mean', 0.5), std=kwargs.get('std', 0.5)),
         ])
     elif transform_type == 'bicubic_norm':
         transform = thv.transforms.Compose([
