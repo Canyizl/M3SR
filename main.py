@@ -9,7 +9,7 @@ from utils.util_common import get_obj_from_str
 from utils.util_opts import str2bool
 import os
  
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' #'0,1,2,3' #
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1' #'0,1,2,3' #
 
 def get_parser(**parser_kwargs):
     parser = argparse.ArgumentParser(**parser_kwargs)

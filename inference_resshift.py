@@ -12,12 +12,12 @@ from sampler import ResShiftSampler
 from utils.util_opts import str2bool
 from basicsr.utils.download_util import load_file_from_url
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 _STEP = {
     'v1': 15,
     'v2': 15,
-    'v3': 4,
+    'v3': 15,
     'bicsr': 4,
     'inpaint_imagenet': 4,
     'inpaint_face': 4,
@@ -92,14 +92,16 @@ def get_configs(args):
 
     if args.task == 'realsr':
         if args.version in ['v1', 'v2']:
-            configs = OmegaConf.load('./configs/realsr_swinunet_realesrgan256.yaml')
+            configs = OmegaConf.load('./configs/realsr_swinunet_material256.yaml')
         elif args.version == 'v3':
             configs = OmegaConf.load('./configs/realsr_swinunet_realesrgan256_journal.yaml')
         else:
             raise ValueError(f"Unexpected version type: {args.version}")
         assert args.scale == 4, 'We only support the 4x super-resolution now!'
         ckpt_url = _LINK[args.version]
-        ckpt_path = ckpt_dir / f'resshift_{args.task}x{args.scale}_s{_STEP[args.version]}_{args.version}_{args.ckptn}.pth'
+        ckpt_path = ckpt_dir / f'task1' / f'model_{args.ckptn}.pth'
+        bert_path = ckpt_dir /  f'task1' / f'bertmodel'
+        token_path = ckpt_dir /  f'task1' / f'tokenizer'
         vqgan_url = _LINK['vqgan']
         vqgan_path = ckpt_dir / f'autoencoder_vq_f4.pth'
     elif args.task == 'bicsr':
@@ -159,7 +161,9 @@ def get_configs(args):
     configs.model.ckpt_path = str(ckpt_path)
     configs.diffusion.params.sf = args.scale
     configs.autoencoder.ckpt_path = str(vqgan_path)
-
+    configs.bert_path = str(bert_path)
+    configs.token_path = str(token_path)
+    
     # save folder
     if not Path(args.out_path).exists():
         Path(args.out_path).mkdir(parents=True)

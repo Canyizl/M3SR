@@ -26,17 +26,11 @@ def compute_ssim(img1, img2):
     return ssim_value
 
 # 3. LPIPS 计算
-def compute_lpips(img1_path, img2_path):
+def compute_lpips(img1, img2):
     # 加载预训练的 LPIPS 网络
     lpips_net = lpips.LPIPS(net='alex')  # 使用 AlexNet 作为特征提取网络
     
-    # 读取并转换图像
-    img1 = Image.open(img1_path).convert("RGB")
-    img2 = Image.open(img2_path).convert("RGB")
-    
     # 将图像转换为 tensor
-    img1 = np.array(img1).astype(np.float32) / 255.0
-    img2 = np.array(img2).astype(np.float32) / 255.0
     img1 = torch.tensor(img1).permute(2, 0, 1).unsqueeze(0)
     img2 = torch.tensor(img2).permute(2, 0, 1).unsqueeze(0)
 
@@ -63,9 +57,9 @@ def evaluate_image_quality(original_img_path, reconstructed_img_path):
     ssim_value_gray = compute_ssim(img1_gray, img2_gray)
 
     # LPIPS 计算
-    #lpips_value = compute_lpips(original_img_path, reconstructed_img_path)
+    lpips_value = compute_lpips(img1,img2)
 
-    return psnr_value, ssim_value, psnr_value_rgb, ssim_value_gray#, lpips_value
+    return psnr_value, ssim_value, psnr_value_rgb, ssim_value_gray, lpips_value
 
 
 
@@ -75,8 +69,8 @@ def organize_images_by_prefix():
     :param src_folder: 源文件夹路径，包含子图文件
     :param dest_folder: 目标文件夹路径，将会创建子文件夹并将图片分类存储
     """
-    src_folder = 'samples_image/pred'  # 替换为源文件夹路径
-    dest_folder = 'pred_images'  # 替换为目标文件夹路径
+    src_folder = 'pred_images'  # 替换为源文件夹路径
+    dest_folder = 'pred_sorted_images'  # 替换为目标文件夹路径
     # 确保目标文件夹存在
     os.makedirs(dest_folder, exist_ok=True)
 
@@ -101,7 +95,7 @@ def organize_images_by_prefix():
 
 def calc_metrics():
     # 示例：使用图片路径进行评估
-    original_img_folder = '/nfs5/xfy/test_images/gt' #'testdata/Val_materials/gt'  # 替换为原始图像路径
+    original_img_folder = '/mnt/nfs/xfy/materials_datasets/materialsr_datasets/test_images/gt' #'testdata/Val_materials/gt'  # 替换为原始图像路径
     reconstructed_img_folder = 'pred_images' #'testdata/Val_materials/pred'  # 替换为重建图像路径
 
     index = 0
@@ -114,19 +108,20 @@ def calc_metrics():
         for file in tqdm(files):
             # 只处理图片文件（根据后缀名判断）
             if file.lower().endswith(('.png', '.jpg', '.jpeg', '.tif', '.bmp')):
-                original_img_folder = '/nfs5/xfy/test_images/gt'
+                original_img_folder = '/mnt/nfs/xfy/materials_datasets/materialsr_datasets/test_images/gt'
                 reconstructed_img_folder = 'pred_images'
                 prefix = file.split('_')[0]
                 original_img_folder = os.path.join(original_img_folder, prefix)
                 reconstructed_img_folder = os.path.join(reconstructed_img_folder, prefix)
                 gt_image_path = os.path.join(original_img_folder, file)
                 pred_image_path = os.path.join(reconstructed_img_folder, file)       
-                psnr_y_t, ssim_t, psnr_rgb_t, ssim_gray_t = evaluate_image_quality(gt_image_path, pred_image_path)
+                psnr_y_t, ssim_t, psnr_rgb_t, ssim_gray_t, lpips_t = evaluate_image_quality(gt_image_path, pred_image_path)
                 index += 1
                 psnr_y_all += psnr_y_t
                 psnr_rgb_all += psnr_rgb_t
                 ssim_all += ssim_t
                 ssim_gray_all += ssim_gray_t
+                lpips_all += lpips_t
 
     print("All_Number: ", index)
     print("Ychannel: \n")
@@ -135,12 +130,14 @@ def calc_metrics():
     print("RGB: \n")
     print("PSNR: ", psnr_rgb_all / index)
     print("SSIM: ", ssim_gray_all / index)
-    #print("lpips: ", lpips_all / index)
+    print("lpips all: ", lpips_all, "index:" ,index, "avg lpips:", lpips_all / index)
+    
 
 def main():
     #organize_images_by_prefix()
-    #calc_metrics()
-
+    calc_metrics()
+    
+    '''
     dir_path = "/nfs5/xfy/magnifydataset/test/lowscale"
     dir_path_extra = "/nfs5/xfy/magnifydataset/test/highscale"
     dataloader = PairedData(dir_path=dir_path, dir_path_extra=dir_path_extra, im_exts="tif", length = 32)
@@ -156,6 +153,7 @@ def main():
         cv2.imwrite("testdata/gt_" + str(i) + ".jpg",gt)
         if i > 5:
             exit()
+    '''
         
 
 main()

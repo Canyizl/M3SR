@@ -22,6 +22,7 @@ import torch.multiprocessing as mp
 
 from datapipe.datasets import create_dataset
 from utils.util_image import ImageSpliterTh
+from transformers import BertTokenizer, BertModel
 
 class BaseSampler:
     def __init__(
@@ -98,6 +99,12 @@ class BaseSampler:
             util_net.reload_model(model, ckpt)
         self.freeze_model(model)
         self.model = model.eval()
+        
+        self.bertmodel = BertModel.from_pretrained(self.configs.bert_path)
+        self.tokenizer = BertTokenizer.from_pretrained(self.configs.token_path)
+        
+        self.bertmodel.eval()
+        self.tokenizer.requires_grad = False
 
         # autoencoder model
         if self.configs.autoencoder.params.get("lora_tune_decoder", False):
@@ -161,7 +168,7 @@ class BaseSampler:
             params.requires_grad = False
 
 class ResShiftSampler(BaseSampler):
-    def sample_func(self, y0, noise_repeat=False, mask=False):
+    def sample_func(self, y0, prompt, noise_repeat=False, mask=False):
         '''
         Input:
             y0: n x c x h x w torch tensor, low-quality image, [-1, 1], RGB
@@ -195,6 +202,8 @@ class ResShiftSampler(BaseSampler):
         results = self.base_diffusion.p_sample_loop(
                 y=y0,
                 model=self.model,
+                prompt=prompt,
+                scale=None,
                 first_stage_model=self.autoencoder,
                 noise=None,
                 noise_repeat=noise_repeat,
@@ -218,7 +227,7 @@ class ResShiftSampler(BaseSampler):
             bs: int, default bs=1, bs % num_gpus == 0
             mask_path: image mask for inpainting
         '''
-        def _process_per_image(im_lq_tensor, mask=None):
+        def _process_per_image(im_lq_tensor, im_lq_prompt, mask=None):
             '''
             Input:
                 im_lq_tensor: b x c x h x w, torch tensor, [-1, 1], RGB
@@ -256,6 +265,7 @@ class ResShiftSampler(BaseSampler):
                 with context():
                     im_sr_tensor = self.sample_func(
                             im_lq_tensor,
+                            im_lq_prompt,
                             noise_repeat=noise_repeat,
                             mask=mask,
                             )     # 1 x c x h x w, [-1, 1]
@@ -320,10 +330,15 @@ class ResShiftSampler(BaseSampler):
                 ind_start = self.rank * micro_batchsize
                 ind_end = ind_start + micro_batchsize
                 micro_data = {key:value[ind_start:ind_end] for key,value in data.items()}
+                prompt_txt = micro_data["prompt"][0]
+                prompt_inputs = self.tokenizer.batch_encode_plus(prompt_txt, max_length=64, padding='max_length', truncation=True, return_tensors="pt")
+                prompt_outputs = self.bertmodel(**prompt_inputs)
+                prompt = prompt_outputs.last_hidden_state.cuda()
 
                 if micro_data['lq'].shape[0] > 0:
                     results = _process_per_image(
                             micro_data['lq'].cuda(),
+                            prompt,
                             mask=micro_data['mask'].cuda() if 'mask' in micro_data else None,
                             )    # b x h x w x c, [0, 1], RGB
 

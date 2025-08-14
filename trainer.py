@@ -42,6 +42,7 @@ class TrainerBase:
     def __init__(self, configs):
         self.configs = configs
         self.task = configs.train.task
+        self.warmup = configs.train.warmup
 
         # setup distributed training: self.num_gpus, self.rank
         self.setup_dist()
@@ -84,8 +85,14 @@ class TrainerBase:
     def init_logger(self):
         if self.configs.resume:
             assert self.configs.resume.endswith(".pth")
-            save_dir = Path(self.configs.resume).parents[1]
-            project_id = save_dir.name
+            if self.warmup:
+                project_id = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
+                save_dir = Path(self.configs.save_dir) / project_id
+                if not save_dir.exists() and self.rank == 0:
+                    save_dir.mkdir(parents=True)
+            else:
+                save_dir = Path(self.configs.resume).parents[1]
+                project_id = save_dir.name
         else:
             project_id = datetime.datetime.now().strftime("%Y-%m-%d-%H-%M")
             save_dir = Path(self.configs.save_dir) / project_id
@@ -156,7 +163,9 @@ class TrainerBase:
                     ema_state[key] = deepcopy(ckpt[key].detach().data)
 
         if self.configs.resume:
-            assert self.configs.resume.endswith(".pth") and os.path.isfile(self.configs.resume)
+            print(self.configs.resume)
+            if self.warmup is False:
+                assert self.configs.resume.endswith(".pth") and os.path.isfile(self.configs.resume)
 
             if self.rank == 0:
                 self.logger.info(f"=> Loaded checkpoint from {self.configs.resume}")
@@ -165,14 +174,22 @@ class TrainerBase:
             torch.cuda.empty_cache()
 
             # learning rate scheduler
-            self.iters_start = ckpt['iters_start']
-            for ii in range(1, self.iters_start+1):
-                self.adjust_lr(ii)
-
-            # logging
-            if self.rank == 0:
-                self.log_step = ckpt['log_step']
-                self.log_step_img = ckpt['log_step_img']
+            if self.task == "rescale" and self.warmup:
+                self.iters_start = 0
+            else:
+                self.iters_start = ckpt['iters_start']
+                for ii in range(1, self.iters_start+1):
+                    self.adjust_lr(ii)
+                # logging
+                if self.rank == 0:
+                    self.log_step = ckpt['log_step']
+                    self.log_step_img = ckpt['log_step_img']
+                # AMP scaler
+                if self.amp_scaler is not None:
+                    if "amp_scaler" in ckpt:
+                        self.amp_scaler.load_state_dict(ckpt["amp_scaler"])
+                        if self.rank == 0:
+                            self.logger.info("Loading scaler from resumed state...")
 
             # EMA model
             if self.rank == 0 and hasattr(self, 'ema_rate'):
@@ -180,29 +197,15 @@ class TrainerBase:
                 self.logger.info(f"=> Loaded EMA checkpoint from {str(ema_ckpt_path)}")
                 ema_ckpt = torch.load(ema_ckpt_path, map_location=f"cuda:{self.rank}")
                 _load_ema_state(self.ema_state, ema_ckpt)
-
             torch.cuda.empty_cache()
-
-            '''
-            if self.rank == 0:
+            
+            if isinstance(self.bertmodel, torch.nn.parallel.DistributedDataParallel):
                 self.bertmodel.module.from_pretrained(os.path.dirname(self.configs.resume) + '/bertmodel')
-                #self.bertmodel.to(self.rank)
-                self.tokenizer.from_pretrained(os.path.dirname(self.configs.resume) + '/tokenizer')
-                print("reload bert and tokenizer")
-            '''
-            self.bertmodel.from_pretrained(os.path.dirname(self.configs.resume) + '/bertmodel')
-            #self.bertmodel.to(self.rank)
+            else:
+                self.bertmodel.from_pretrained(os.path.dirname(self.configs.resume) + '/bertmodel')
             self.tokenizer.from_pretrained(os.path.dirname(self.configs.resume) + '/tokenizer')
             print("reload bert and tokenizer")
-            
             torch.cuda.empty_cache()
-
-            # AMP scaler
-            if self.amp_scaler is not None:
-                if "amp_scaler" in ckpt:
-                    self.amp_scaler.load_state_dict(ckpt["amp_scaler"])
-                    if self.rank == 0:
-                        self.logger.info("Loading scaler from resumed state...")
 
             # reset the seed
             self.setup_seed(seed=self.iters_start)
@@ -569,7 +572,7 @@ class TrainerDifIR(TrainerBase):
     @torch.no_grad()
     def prepare_data(self, data, dtype=torch.float32, realesrgan=None, phase='train'):
         if self.task == "realsr":
-            #print(data["prompt"]) 有个空外套[]
+            #print(data["prompt"])
             #print(data["prompt"][0])
             prompt_txt = data["prompt"][0]
             #print(prompt_txt[0])
@@ -1043,8 +1046,8 @@ class TrainerDifIR(TrainerBase):
                             sample_decode['sample'],
                             im_gt,
                             ).sum().item()
-                    true_sample_decode = (sample_decode['sample'][0] * 0.5 + 0.5).cpu().numpy().transpose(1,2,0)
-                    true_im_gt = (im_gt[0] * 0.5 + 0.5).cpu().numpy().transpose(1,2,0)
+                    #true_sample_decode = (sample_decode['sample'][0] * 0.5 + 0.5).cpu().numpy().transpose(1,2,0)
+                    #true_im_gt = (im_gt[0] * 0.5 + 0.5).cpu().numpy().transpose(1,2,0)
 
                 if (ii + 1) % self.configs.train.log_freq[2] == 0:
                     self.logger.info(f'Validation: {ii+1:02d}/{num_iters_epoch:02d}...')
