@@ -71,6 +71,11 @@ def get_transforms(transform_type, kwargs):
             thv.transforms.ToTensor(),
             thv.transforms.Normalize(mean=kwargs.get('mean', 0.5), std=kwargs.get('std', 0.5)),
         ])
+    elif transform_type == 'rescale':
+        transform = thv.transforms.Compose([
+            thv.transforms.ToTensor(),
+            #thv.transforms.Normalize(mean=kwargs.get('mean', 0.5), std=kwargs.get('std', 0.5)),
+        ])
     elif transform_type == 'bicubic_norm':
         transform = thv.transforms.Compose([
             util_sisr.Bicubic(scale=kwargs.get('scale', None), out_shape=kwargs.get('out_shape', None)),
@@ -198,6 +203,7 @@ class BaseData(Dataset):
 
     def __getitem__(self, index):
         im_path_base = self.file_paths[index]
+        
         parent_dir = os.path.dirname(im_path_base)
         pic_name = parent_dir.split('/')[-1] + '.txt'
         prompt_dir = os.path.join(parent_dir,pic_name)
@@ -260,7 +266,7 @@ class PairedData(Dataset):
  
     def __getitem__(self, index):
         im_path_base = self.file_paths[index]
-        subfile_name = im_path_base.split("/")[-2]
+        subfile_name = im_path_base.split("/")[-2]  
         im_base = util_image.imread(im_path_base, chn='rgb', dtype='uint8')
         im_path_extra = Path(self.dir_path_extra) / Path(subfile_name) / Path(im_path_base).name
         im_extra = util_image.imread(im_path_extra, chn='rgb', dtype='uint8')
@@ -270,7 +276,7 @@ class PairedData(Dataset):
         txt_name = subfile_name.split("_")[0] + '_' + subfile_name.split("_")[-1] + '.txt'
         prompt_dir = os.path.join(Path(self.dir_path_extra) / Path(subfile_name), txt_name)
         prompt = readline_txt(prompt_dir)
-
+        
         im_all = np.concatenate([im_base, im_extra], -1)
 
         im_all = self.transform(im_all)

@@ -94,5 +94,10 @@ def reload_model(model, ckpt):
         if module_flag and (not source_key.startswith('module')):
             target_key = 'module.' + target_key
 
-        assert target_key in ckpt
-        source_value.copy_(ckpt[target_key])
+        if target_key in ckpt:
+            try:
+                source_value.copy_(ckpt[target_key])
+            except Exception as e:
+                print("No suitable key:", target_key)
+        else:
+            print("No found key:", target_key)

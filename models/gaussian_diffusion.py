@@ -194,7 +194,6 @@ class GaussianDiffusion:
         # self.weight_loss_mse = np.append(weight_loss_mse[1],  weight_loss_mse[1:])
         self.weight_loss_mse = weight_loss_mse
         self.scale_loss_weightfn = get_batch_lin_function()
-        #self.kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
 
     def q_mean_variance(self, x_start, y, t):
         """
@@ -210,7 +209,7 @@ class GaussianDiffusion:
         log_variance = variance.log()
         return mean, variance, log_variance
 
-    def q_sample(self, x_start, y, t, scale = None, noise=None):
+    def q_sample(self, x_start, y, t, noise=None):
         """
         Diffuse the data for a given number of diffusion steps.
 
@@ -230,16 +229,7 @@ class GaussianDiffusion:
             _extract_into_tensor(self.etas, t, x_start.shape) * (y - x_start) + x_start
             + _extract_into_tensor(self.sqrt_etas * self.kappa, t, x_start.shape) * noise
         )
-        '''
-        else:
-            scale_coef = torch.log(scale[:, -1])
-            scale_coef = 0.2 * scale_coef + 1
-            scale_coef = scale_coef.view(-1,1,1,1)
-            return (
-                _extract_into_tensor(self.etas, t, x_start.shape) * (2 - scale_coef) * (y - x_start) + x_start * scale_coef
-                + _extract_into_tensor(self.sqrt_etas * self.kappa, t, x_start.shape) * noise
-            )'
-        '''
+
 
  
 
@@ -559,7 +549,7 @@ class GaussianDiffusion:
             if not model_dtype == data_dtype:
                 out = out.type(data_dtype)
             return out
-
+ 
     def prior_sample(self, y, noise=None):
         """
         Generate samples from the prior distribution, i.e., q(x_T|x_0) ~= N(x_T|y, ~)
@@ -599,22 +589,18 @@ class GaussianDiffusion:
         if model_kwargs is None:
             model_kwargs = {}
 
-        #print("y:", y.shape)
-        #print("x_start:", x_start.shape)
         z_y = self.encode_first_stage(y, first_stage_model, up_sample=True)
         z_start = self.encode_first_stage(x_start, first_stage_model, up_sample=False)
-        #print("z_y:", z_y.shape)
-        #print("z_start:", z_start.shape)
-        #print("depth_channel:", depth_channel.shape)
-
+        '''
+        print("y", y.shape)
+        print("x_start", x_start.shape)
+        print("z_y", z_y.shape)
+        print("z_start", z_start.shape)
+        '''
         if noise is None:
             noise = th.randn_like(z_start)
 
-        if scale is None:
-            z_t = self.q_sample(z_start, z_y, t,  noise=noise) 
-        else:
-            z_t = self.q_sample(z_start, z_y, t,  scale = scale, noise=noise) 
-
+        z_t = self.q_sample(z_start, z_y, t,  noise=noise) 
         terms = {}
  
         if self.loss_type == LossType.MSE or self.loss_type == LossType.WEIGHTED_MSE:
@@ -626,6 +612,7 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON_SCALE: noise*self.kappa*_extract_into_tensor(self.sqrt_etas, t, noise.shape),
             }[self.model_mean_type]
             assert model_output.shape == target.shape == z_start.shape
+            
             if scale is None:
                 terms["mse"] = mean_flat((target - model_output) ** 2)
             else:

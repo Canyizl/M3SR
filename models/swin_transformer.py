@@ -102,7 +102,7 @@ class WindowAttention(nn.Module):
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         self.register_buffer("relative_position_index", relative_position_index)
 
-        #self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.q = nn.Linear(dim, dim, bias=qkv_bias)
         self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
@@ -124,17 +124,17 @@ class WindowAttention(nn.Module):
             p_emb : [B, max_l, c] [B, 64, 640])
         """
         B_, N, C = x.shape
-        B, L, c = p_emb.shape
-        #print(x.shape)
-        #qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
-        #q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple), B_ x H x N x C
         kv = self.kv(x).reshape(B_, N, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous()
         k,v = kv[0],kv[1]
 
-        b_x = B_ // B
-        q = self.prompt_clinear(p_emb).permute(0,2,1).contiguous()
-        q = self.prompt_nlinear(q).repeat(b_x,1,1)
-        q = q.reshape(B_, N, 1, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous().squeeze(0)
+        if p_emb is not None:
+            B, L, c = p_emb.shape
+            b_x = B_ // B
+            q = self.prompt_clinear(p_emb).permute(0,2,1).contiguous()
+            q = self.prompt_nlinear(q).repeat(b_x,1,1)
+            q = q.reshape(B_, N, 1, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous().squeeze(0)
+        else:
+            q = self.q(x).reshape(B_, N, 1, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4).contiguous().squeeze(0)
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1).contiguous())

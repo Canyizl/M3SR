@@ -123,7 +123,7 @@ data:
 
       gt_size: 256
       crop_pad_size: 300
-      use_hflip: True
+      use_hflip: False
       use_rot: False
       rescale_gt: True
   val:
@@ -144,11 +144,12 @@ data:
 
 train:
   task: realsr
+  warmup: False
   # learning rate
   lr: 5e-5                      # learning rate 
   lr_min: 2e-5                      # learning rate 
   lr_schedule: ~
-  warmup_iterations: 0 #5000
+  warmup_iterations: 1000 #5000
   # dataloader
   batch: [64,8] #[64, 8]                
   microbatch: 8
@@ -160,11 +161,11 @@ train:
   iterations: 150000            # total iterations
   # save loggings
   save_freq: 10000              
-  log_freq: [2000, 10000, 1]         # [training loss, training images, val images]
+  log_freq: [1000, 10000, 1]         # [training loss, training images, val images]
   local_logging: True           # manually save images
   tf_logging: False             # tensorboard logging
   # validation settings
-  use_ema_val: True            
+  use_ema_val: False            
   val_freq: ${train.save_freq}
   val_y_channel: True
   val_resolution: ${model.params.lq_size}

@@ -1,7 +1,7 @@
 from abc import abstractmethod
 
 import math
-
+from torchvision import transforms
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -328,7 +328,6 @@ class QKVAttention(nn.Module):
         assert width % (3 * self.n_heads) == 0
         ch = width // (3 * self.n_heads)
         if XFORMERS_IS_AVAILBLE:
-            # qkv: b x length x heads x 3ch
             qkv = qkv.reshape(bs, self.n_heads, ch * 3, length).permute(0, 3, 1, 2).to(memory_format=th.contiguous_format)
             q, k, v = qkv.split(ch, dim=3)  # b x length x heads x ch
             a = xop.memory_efficient_attention(q, k, v, p=0.0)  # b x length x heads x length
@@ -552,6 +551,7 @@ class UNetModel(nn.Module):
             nn.SiLU(),
             conv_nd(dims, input_ch, out_channels, 3, padding=1),
         )
+        
 
     def forward(self, x, timesteps, y=None, lq=None):
         """
@@ -661,6 +661,7 @@ class UNetModelSwin(nn.Module):
         cond_lq=True,
         cond_mask=False,
         lq_size=256,
+        task=None
     ):
         super().__init__()
 
@@ -699,6 +700,7 @@ class UNetModelSwin(nn.Module):
             nn.SiLU(),
             linear(prompt_embed_dim, prompt_embed_dim),
         )
+    
         
         if cond_lq and lq_size == image_size:
             self.feature_extractor = nn.Identity()
@@ -875,6 +877,31 @@ class UNetModelSwin(nn.Module):
             nn.SiLU(),
             conv_nd(dims, input_ch, out_channels, 3, padding=1),
         )
+        
+        '''
+        self.ada_mean = nn.Sequential(
+            linear(time_embed_dim * 2,64),
+            nn.SiLU(),
+            linear(64,1),
+            nn.Tanh()
+        )
+        self.ada_var = nn.Sequential(
+            linear(time_embed_dim * 2,64),
+            nn.SiLU(),
+            linear(64,1),
+            nn.Tanh()
+        )
+        self.scale_up = nn.Sequential(
+            linear(3, time_embed_dim),
+            nn.SiLU(),
+            linear(time_embed_dim, time_embed_dim),
+        )
+        '''
+        
+        
+        self.task = task
+        self.is_rescale = False
+    
 
     def forward(self, x, timesteps, prompt=None, scale=None, lq=None, mask=None):
         """
@@ -887,11 +914,18 @@ class UNetModelSwin(nn.Module):
 
         hs = [] 
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels)).type(self.dtype)
-
+        
         b,c,h,w = x.shape
-
         prompt_emb = self.prompt_embed(prompt).type(self.dtype)
         
+        '''
+        scale = scale.type(self.dtype)
+        scale = self.scale_up(scale).type(self.dtype)
+        mean = self.ada_mean(th.cat([emb, scale],dim=-1)).view(-1,1,1,1)
+        var = self.ada_var(th.cat([emb, scale],dim=-1)).view(-1,1,1,1)
+        x = x + mean + x * var
+        '''
+
         if lq is not None:
             assert self.cond_lq
             if mask is not None:
@@ -899,7 +933,6 @@ class UNetModelSwin(nn.Module):
                 lq = th.cat([lq, mask], dim=1)
             lq = self.feature_extractor(lq.type(self.dtype))
             x = th.cat([x, lq], dim=1)
-
         h = x.type(self.dtype)
         
         for ii, module in enumerate(self.input_blocks):
@@ -1193,9 +1226,6 @@ class UNetModelConv(nn.Module):
         """
         hs = []
         emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
-        
-        x_ada = self.film_mean(emb) + self.film_var * x
-        x += x_ada
 
         if lq is not None:
             assert self.cond_lq

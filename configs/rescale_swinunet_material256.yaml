@@ -25,6 +25,7 @@ model:
     mlp_ratio: 4
     cond_lq: True
     lq_size: 256
+    task: rescale
 
 diffusion:
   target: models.script_util.create_gaussian_diffusion
@@ -47,7 +48,7 @@ diffusion:
 autoencoder:
   target: ldm.models.autoencoder.VQModelTorch
   ckpt_path: weights/autoencoder_vq_f4.pth
-  tune_decoder: True
+  tune_decoder: False
   params:
     embed_dim: 3
     n_embed: 8192
@@ -71,9 +72,9 @@ data:
   train:
     type: paired
     params:
-      dir_path: /nfs5/xfy/magnifydataset/train/lowscale 
-      dir_path_extra: /nfs5/xfy/magnifydataset/train/highscale
-      transform_type: default
+      dir_path: /mnt/nfs/xfy/materials_datasets/magnifydataset/train/lowscale
+      dir_path_extra: /mnt/nfs/xfy/materials_datasets/magnifydataset/train/highscale
+      transform_type: rescale
       transform_kwargs:
         pass_aug: False
         pch_size: 256
@@ -86,11 +87,11 @@ data:
   val:
     type: paired
     params:
-      dir_path: /home/xfy/Resshift/ResShift/testdata/Val_rescale/lowscale
-      dir_path_extra: /home/xfy/Resshift/ResShift/testdata/Val_rescale/highscale
-      transform_type: default
+      dir_path: /mnt/nfs/xfy/materials_datasets/magnifydataset/test/lowscale
+      dir_path_extra: /mnt/nfs/xfy/materials_datasets/magnifydataset/test/highscale
+      transform_type: rescale
       transform_kwargs: 
-        pass_aug: True
+        pass_aug: True # base : True
         pch_size: 256
         mean: ${data.train.params.transform_kwargs.mean}
         std: ${data.train.params.transform_kwargs.std}
@@ -101,11 +102,12 @@ data:
  
 train:
   task: rescale
+  warmup: False
   # learning rate
   lr: 5e-5                      # learning rate 
   lr_min: 2e-5                      # learning rate 
   lr_schedule: ~
-  warmup_iterations: 5000
+  warmup_iterations: 0 #5000
   # dataloader
   batch: [64, 4]                
   microbatch: 8
@@ -113,16 +115,15 @@ train:
   prefetch_factor: 2            
   # optimization settings
   weight_decay: 0               
-  ema_rate: 0.999
-  iterations: 200000            # total iterations
+  iterations: 100000            # total iterations
   # save logging
-  save_freq: 10000
-  log_freq: [200, 2000, 1]     # [training loss, training images, val images]
+  save_freq: 20000
+  log_freq: [2000, 20000, 1]     # [training loss, training images, val images]
   # loss_coef: [1.0, 4.0]    # [mse, lpips]
   local_logging: True           # manually save images
   tf_logging: False             # tensorboard logging
   # validation settings
-  use_ema_val: True            
+  use_ema_val: False            
   val_freq: ${train.save_freq}
   val_y_channel: True
   val_resolution: ${model.params.lq_size}

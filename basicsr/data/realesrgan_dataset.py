@@ -4,7 +4,7 @@ import numpy as np
 import os
 import os.path as osp
 import random
-import time
+import time 
 import torch
 from pathlib import Path
 
@@ -115,13 +115,7 @@ class RealESRGANDataset(data.Dataset):
         pic_name = parent_dir.split('/')[-1] + '.txt'
         prompt_dir = os.path.join(parent_dir,pic_name)
         prompt = readline_txt(prompt_dir)
-
-        '''
-        prompt_inputs = self.tokenizer(prompt_txt, return_tensors="pt")
-        prompt_outputs = self.bertmodel(**prompt_inputs)
-        prompt = prompt_outputs.last_hidden_state
-        '''
-
+ 
         # avoid errors caused by high latency in reading files
         retry = 3
         while retry > 0:
